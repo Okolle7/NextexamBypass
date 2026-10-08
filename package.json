@@ -1,0 +1,34 @@
+{
+  "name": "Bypass-Overlay",
+  "version": "1.0.0",
+  "description": "Overlays Anthropics LLM at the front of your Screen without showing up in any screenshot nor screenshare",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "rebuild": "electron-rebuild -f -w keyboardhook",
+    "dist": "electron-builder --win portable"
+  },
+  "build": {
+    "appId": "com.philip.LLMoverlay",
+    "files": [
+      "main.js",
+      "preload.js",
+      "claudepreload.js",
+      "overlay.html",
+      "build/Release/keyboardhook.node"
+    ],
+    "asarUnpack": ["build/Release/keyboardhook.node"],
+    "npmRebuild": false,
+    "directories": { "output": "dist" }
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.13.3",
+    "electron-rebuild": "^3.2.9",
+    "node-gyp": "^10.0.0"
+  },
+  "dependencies": {
+    "bindings": "^1.5.0",
+    "node-addon-api": "^7.0.0"
+  }
+}

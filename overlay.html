@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Overlay</title>
+<style>
+    :root {
+        --bg: rgba(18, 19, 24, 0.58);
+        --panel: rgba(255, 255, 255, 0.035);
+        --border: rgba(255, 255, 255, 0.09);
+        --text: #e9e9ec;
+        --muted: #8b8c95;
+        --accent: #9db4ff;
+        --off: #ef5a6a;
+        --on: #4cd787;
+    }
+    html, body {
+        margin: 0; height: 100%;
+        background: transparent;
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        overflow: hidden;
+        user-select: none;
+    }
+    body {
+        display: flex;
+        padding: 10px;
+        box-sizing: border-box;
+    }
+    #box {
+        flex: 1; position: relative;
+        display: flex; flex-direction: column; gap: 8px;
+        background: var(--bg);
+        backdrop-filter: blur(16px) saturate(120%);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px;
+        box-sizing: border-box;
+        color: var(--text);
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+        transition: border-color 0.25s ease, box-shadow 0.25s ease;
+    }
+    #box.capture {
+        border-color: rgba(76, 215, 135, 0.5);
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45),
+                    0 0 24px rgba(76, 215, 135, 0.18);
+    }
+    #status {
+        display: flex; align-items: center; gap: 8px;
+        font-size: 11px; font-weight: 500; letter-spacing: 0.2px;
+        color: var(--muted);
+        padding: 0 2px;
+        transition: color 0.25s ease;
+    }
+    #status::before {
+        content: ''; flex: none;
+        width: 7px; height: 7px; border-radius: 50%;
+        background: var(--off);
+        box-shadow: 0 0 8px var(--off);
+        transition: background 0.25s ease, box-shadow 0.25s ease;
+    }
+    #status.capture { color: var(--text); }
+    #status.capture::before {
+        background: var(--on);
+        box-shadow: 0 0 8px var(--on);
+    }
+    #answer {
+        flex: 1;
+        overflow-y: auto;
+        font-size: 13px;
+        line-height: 1.5;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        padding: 10px;
+        border-radius: 8px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: 'Cascadia Code', 'Consolas', monospace;
+        color: var(--text);
+        user-select: text;
+    }
+    #answer .q { color: var(--accent); font-weight: 500; margin-bottom: 4px; }
+    #input {
+        font-size: 13px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        padding: 8px 10px;
+        border-radius: 8px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: 'Cascadia Code', 'Consolas', monospace;
+        color: var(--text);
+        min-height: 17px;
+    }
+    .caret {
+        display: inline-block;
+        width: 2px; height: 11px;
+        vertical-align: text-bottom;
+        background: var(--accent);
+        animation: blink 1.1s steps(1) infinite;
+    }
+    @keyframes blink {
+        0%, 50% { opacity: 1; }
+        51%, 100% { opacity: 0; }
+    }
+    .hint {
+        font-size: 10px; color: var(--muted);
+        text-align: center; line-height: 1.5;
+        opacity: 0.8;
+    }
+    #answer::-webkit-scrollbar { width: 6px; }
+    #answer::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.12);
+        border-radius: 3px;
+    }
+    #answer::-webkit-scrollbar-track { background: transparent; }
+    #watermark {
+        position: absolute;
+        bottom: 6px; right: 10px;
+        font-size: 9px; letter-spacing: 0.3px;
+        font-weight: 600;
+        color: #b347ff;
+        text-shadow: 0 0 8px rgba(179, 71, 255, 0.55);
+        opacity: 0.9;
+        pointer-events: none;
+        user-select: none;
+    }
+</style>
+</head>
+<body>
+<div id="box">
+    <div id="status">Insert = show/hide | # = keyboard</div>
+    <div id="answer"></div>
+    <div id="input"></div>
+    <div class="hint">Enter = send · Esc = clear · Ctrl+Shift+C = Claude login</div>
+    <div id="watermark">made by Philip</div>
+</div>
+<script>
+    const box = document.getElementById('box');
+    const answer = document.getElementById('answer');
+    const input = document.getElementById('input');
+    const status = document.getElementById('status');
+
+    let buffer = '';
+    let cursorPos = 0;
+    let lastQuestion = '';
+    let waiting = false;
+
+    let interactive = false;
+    window.addEventListener('mousemove', () => {
+        if (!interactive) {
+            interactive = true;
+            window.overlayAPI.setInteractive(true);
+        }
+    });
+    document.documentElement.addEventListener('mouseleave', () => {
+        if (interactive) {
+            interactive = false;
+            window.overlayAPI.setInteractive(false);
+        }
+    });
+
+    function renderInput() {
+        if (cursorPos < 0) cursorPos = 0;
+        if (cursorPos > buffer.length) cursorPos = buffer.length;
+        input.textContent = '';
+        input.appendChild(document.createTextNode(buffer.slice(0, cursorPos)));
+        const caret = document.createElement('span');
+        caret.className = 'caret';
+        input.appendChild(caret);
+        input.appendChild(document.createTextNode(buffer.slice(cursorPos)));
+    }
+
+    function showConvo(question, reply) {
+        answer.innerHTML = '';
+        const q = document.createElement('div');
+        q.className = 'q';
+        q.textContent = '> ' + question;
+        answer.appendChild(q);
+        if (reply) {
+            const a = document.createElement('div');
+            a.textContent = reply;
+            answer.appendChild(a);
+        }
+        answer.scrollTop = answer.scrollHeight;
+    }
+
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Insert') {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        }
+    });
+
+    window.overlayAPI.onKey(({vk, down, text}) => {
+        if (!down) return;
+
+        if (vk === 0x08) {
+            if (cursorPos > 0) {
+                buffer = buffer.slice(0, cursorPos - 1) + buffer.slice(cursorPos);
+                cursorPos--;
+                renderInput();
+            }
+            return;
+        }
+        if (vk === 0x2E) {
+            if (cursorPos < buffer.length) {
+                buffer = buffer.slice(0, cursorPos) + buffer.slice(cursorPos + 1);
+                renderInput();
+            }
+            return;
+        }
+        if (vk === 0x25) {
+            if (cursorPos > 0) { cursorPos--; renderInput(); }
+            return;
+        }
+        if (vk === 0x27) {
+            if (cursorPos < buffer.length) { cursorPos++; renderInput(); }
+            return;
+        }
+        if (vk === 0x24) {
+            cursorPos = 0;
+            renderInput();
+            return;
+        }
+        if (vk === 0x23) {
+            cursorPos = buffer.length;
+            renderInput();
+            return;
+        }
+        if (vk === 0x0D) {
+            const q = buffer.trim();
+            if (!q || waiting) return;
+            lastQuestion = q;
+            buffer = '';
+            cursorPos = 0;
+            renderInput();
+            waiting = true;
+            showConvo(q, '...');
+            window.overlayAPI.ask(q);
+            return;
+        }
+        if (vk === 0x1B) {
+            buffer = '';
+            cursorPos = 0;
+            renderInput();
+            return;
+        }
+
+        if (text) {
+            buffer = buffer.slice(0, cursorPos) + text + buffer.slice(cursorPos);
+            cursorPos += text.length;
+            renderInput();
+        }
+    });
+
+    window.overlayAPI.onReply((data) => {
+        if (data.ready !== undefined) {
+            if (!data.ready) {
+                showConvo('claude.ai', 'Not logged in. Press Ctrl+Shift+C to log in.');
+            }
+            return;
+        }
+        if (data.notReady) {
+            waiting = false;
+            showConvo(lastQuestion, 'Not logged in to claude.ai.\nPress Ctrl+Shift+C to log in and try again.');
+            return;
+        }
+        if (data.error) {
+            waiting = false;
+            showConvo(lastQuestion, 'Error: ' + data.error);
+            return;
+        }
+        showConvo(lastQuestion, data.text || '');
+        if (data.done) waiting = false;
+    });
+
+    window.overlayAPI.onToggle((mode) => {
+        if (mode === 'ON') {
+            box.classList.add('capture');
+            status.classList.add('capture');
+            status.textContent = 'Keyboard on (# to turn off)';
+        } else {
+            box.classList.remove('capture');
+            status.classList.remove('capture');
+            status.textContent = 'Keyboard off (# to turn on)';
+        }
+    });
+
+    renderInput();
+</script>
+</body>
+</html>

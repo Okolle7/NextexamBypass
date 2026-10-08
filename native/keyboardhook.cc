@@ -94,8 +94,8 @@ static std::wstring TranslateKey(DWORD vk, DWORD scanCode) {
     return std::wstring(buf, n);
 }
 
-// runs on the JS thread ev was allocated in SendKey
-// env is null when node is shutting down, ev still has to be freed
+// runs on the JS thread. ev was allocated in SendKey and has to be freed
+// even when env is null (node is shutting down)
 static void CallJs(napi_env env, napi_value js_cb, void*, void* data) {
     KeyEvent* ev = static_cast<KeyEvent*>(data);
     if (env) {
@@ -124,7 +124,7 @@ static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lP
 
         TrackKeyState(kb->vkCode, isDown);
 
-        // Insert toggles the overlay always eat it so other apps never see it.
+        // Insert toggles the overlay, always eat it so other apps never see it.
         // returning 1 from a LL hook drops the key
         if (kb->vkCode == VK_INSERT) {
             if (isDown) SendKey(kb->vkCode, true);
@@ -179,7 +179,7 @@ static LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lPara
             LONG y = ms->pt.y;
             if (x >= g_ov_l.load() && x < g_ov_r.load() &&
                 y >= g_ov_t.load() && y < g_ov_b.load()) {
-                // wheel delta is the signed high word +120 per notch up
+                // wheel delta is the signed high word, +120 per notch up
                 int delta = (short)HIWORD(ms->mouseData);
                 napi_call_threadsafe_function(g_mouse_tsfn, new WheelEvent{ delta }, napi_tsfn_nonblocking);
                 return 1;

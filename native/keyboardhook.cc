@@ -201,18 +201,8 @@ static Napi::Value Install(const Napi::CallbackInfo& info) {
     napi_create_string_utf8(env, "KeyboardHook", NAPI_AUTO_LENGTH, &resourceName);
 
     napi_status status = napi_create_threadsafe_function(
-        env,
-        info[0],
-        nullptr,
-        resourceName,
-        0,  // unlimited queue
-        1,  // initial thread count
-        nullptr,
-        nullptr,
-        nullptr,
-        CallJs,
-        &g_tsfn
-    );
+        env, info[0], nullptr, resourceName, 0, 1,
+        nullptr, nullptr, nullptr, CallJs, &g_tsfn);
 
     if (status != napi_ok) {
         Napi::Error::New(env, "Failed to create keyboard callback")

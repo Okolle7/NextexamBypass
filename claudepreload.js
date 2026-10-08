@@ -113,14 +113,13 @@ async function ask(text) {
         return;
     }
 
-    const startWait = Date.now();
-    while (Date.now() - startWait < 20000) {
-        if (pickAll(SEL.message).length > before || pick(SEL.stop)) break;
+    const deadline = Date.now() + 20000;
+    while (pickAll(SEL.message).length <= before && !pick(SEL.stop)) {
+        if (Date.now() > deadline) {
+            ipcRenderer.send('claude-error', 'no response');
+            return;
+        }
         await sleep(150);
-    }
-    if (pickAll(SEL.message).length <= before && !pick(SEL.stop)) {
-        ipcRenderer.send('claude-error', 'no response');
-        return;
     }
 
     let last = '';

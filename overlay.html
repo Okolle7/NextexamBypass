@@ -145,29 +145,10 @@
     let lastQuestion = '';
     let waiting = false;
 
-    let interactive = false;
-    window.addEventListener('mousemove', () => {
-        if (!interactive) {
-            interactive = true;
-            window.overlayAPI.setInteractive(true);
-        }
-    });
-    document.documentElement.addEventListener('mouseleave', () => {
-        if (interactive) {
-            interactive = false;
-            window.overlayAPI.setInteractive(false);
-        }
-    });
-
     function renderInput() {
-        if (cursorPos < 0) cursorPos = 0;
-        if (cursorPos > buffer.length) cursorPos = buffer.length;
-        input.textContent = '';
-        input.appendChild(document.createTextNode(buffer.slice(0, cursorPos)));
         const caret = document.createElement('span');
         caret.className = 'caret';
-        input.appendChild(caret);
-        input.appendChild(document.createTextNode(buffer.slice(cursorPos)));
+        input.replaceChildren(buffer.slice(0, cursorPos), caret, buffer.slice(cursorPos));
     }
 
     function showConvo(question, reply) {
@@ -184,74 +165,55 @@
         answer.scrollTop = answer.scrollHeight;
     }
 
-    window.addEventListener('keydown', (e) => {
-        if (e.key === 'Insert') {
-            e.preventDefault();
-            e.stopPropagation();
-            return false;
-        }
-    });
-
+    // no-op keys return early so the caret blink doesn't restart
     window.overlayAPI.onKey(({vk, down, text}) => {
         if (!down) return;
 
-        if (vk === 0x08) {
-            if (cursorPos > 0) {
+        switch (vk) {
+            case 0x08: // backspace
+                if (cursorPos === 0) return;
                 buffer = buffer.slice(0, cursorPos - 1) + buffer.slice(cursorPos);
                 cursorPos--;
-                renderInput();
-            }
-            return;
-        }
-        if (vk === 0x2E) {
-            if (cursorPos < buffer.length) {
+                break;
+            case 0x2E: // delete
+                if (cursorPos === buffer.length) return;
                 buffer = buffer.slice(0, cursorPos) + buffer.slice(cursorPos + 1);
-                renderInput();
+                break;
+            case 0x25: // left
+                if (cursorPos === 0) return;
+                cursorPos--;
+                break;
+            case 0x27: // right
+                if (cursorPos === buffer.length) return;
+                cursorPos++;
+                break;
+            case 0x24: // home
+                cursorPos = 0;
+                break;
+            case 0x23: // end
+                cursorPos = buffer.length;
+                break;
+            case 0x0D: { // enter
+                const q = buffer.trim();
+                if (!q || waiting) return;
+                lastQuestion = q;
+                buffer = '';
+                cursorPos = 0;
+                waiting = true;
+                showConvo(q, '...');
+                window.overlayAPI.ask(q);
+                break;
             }
-            return;
+            case 0x1B: // esc
+                buffer = '';
+                cursorPos = 0;
+                break;
+            default:
+                if (!text) return;
+                buffer = buffer.slice(0, cursorPos) + text + buffer.slice(cursorPos);
+                cursorPos += text.length;
         }
-        if (vk === 0x25) {
-            if (cursorPos > 0) { cursorPos--; renderInput(); }
-            return;
-        }
-        if (vk === 0x27) {
-            if (cursorPos < buffer.length) { cursorPos++; renderInput(); }
-            return;
-        }
-        if (vk === 0x24) {
-            cursorPos = 0;
-            renderInput();
-            return;
-        }
-        if (vk === 0x23) {
-            cursorPos = buffer.length;
-            renderInput();
-            return;
-        }
-        if (vk === 0x0D) {
-            const q = buffer.trim();
-            if (!q || waiting) return;
-            lastQuestion = q;
-            buffer = '';
-            cursorPos = 0;
-            renderInput();
-            waiting = true;
-            showConvo(q, '...');
-            window.overlayAPI.ask(q);
-            return;
-        }
-        if (vk === 0x1B) {
-            buffer = '';
-            cursorPos = 0;
-            renderInput();
-            return;
-        }
-
-        if (text) {
-            buffer = buffer.slice(0, cursorPos) + text + buffer.slice(cursorPos);
-            cursorPos += text.length;
-            renderInput();
-        }
+        renderInput();
     });
 
     window.overlayAPI.onReply((data) => {
@@ -276,15 +238,10 @@
     });
 
     window.overlayAPI.onToggle((mode) => {
-        if (mode === 'ON') {
-            box.classList.add('capture');
-            status.classList.add('capture');
-            status.textContent = 'Keyboard on (# to turn off)';
-        } else {
-            box.classList.remove('capture');
-            status.classList.remove('capture');
-            status.textContent = 'Keyboard off (# to turn on)';
-        }
+        const on = mode === 'ON';
+        box.classList.toggle('capture', on);
+        status.classList.toggle('capture', on);
+        status.textContent = on ? 'Keyboard on (# to turn off)' : 'Keyboard off (# to turn on)';
     });
 
     renderInput();
